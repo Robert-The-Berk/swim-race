@@ -99,7 +99,7 @@ button:focus-visible { outline: 3px solid var(--warn); outline-offset: 2px; }
 .bar.rhythm i { background: var(--warn); }
 .beat { position: relative; height: 26px; background: var(--bg); border: 1px solid var(--line); border-radius: 5px; overflow: hidden; }
 .beat .zone { position: absolute; top: 0; bottom: 0; }
-.beat .kz { left: 22%; width: 43%; background: color-mix(in srgb, var(--good) 18%, transparent); }
+.beat .kz { left: 17%; width: 52%; background: color-mix(in srgb, var(--good) 18%, transparent); }
 .beat .sz { left: 80%; width: 20%; background: color-mix(in srgb, var(--accent) 25%, transparent); }
 .beat .zl { position: absolute; top: 50%; transform: translateY(-50%); font-size: 11px; font-weight: 600; letter-spacing: .08em; color: var(--muted); }
 .beat .cur { position: absolute; top: 2px; bottom: 2px; width: 3px; border-radius: 2px; background: var(--fg); left: 0; }
@@ -173,12 +173,12 @@ details ol { margin: 10px 0 0; padding-left: 20px; display: flex; flex-direction
   <details>
     <summary>How to swim</summary>
     <ol>
-      <li><b>Start.</b> On “Take your marks”, press and hold your kick key. Let go the moment the horn sounds. Letting go before the horn is a false start and you are out.</li>
-      <li><b>Underwater.</b> After the dive, tap kick for dolphin kicks. Press an arm key to break out and start swimming. You must be up by the 15 m mark.</li>
+      <li><b>Start.</b> On “Take your marks”, press and hold your kick key. Let go the moment the horn sounds. Letting go before the horn is a false start: the first one is a warning, the second puts you out.</li>
+      <li><b>Underwater.</b> After the dive and each turn, tap kick quickly for dolphin kicks. Press an arm key to break out and swim. You come up on your own at 15 m.</li>
       <li><b>Arms.</b> Alternate left and right at a steady pace. The same arm twice stalls you. A faster tempo is faster, but it drains stamina quickly.</li>
       <li><b>Kick.</b> Tap kick once between strokes, while the timing cursor is in the green zone. Missing kicks breaks your rhythm.</li>
       <li><b>Breathe.</b> Press breathe together with an arm stroke. A breath between strokes costs speed. Breathing when your lungs are still full wastes time.</li>
-      <li><b>Turns.</b> Near the wall, where the black line ends in a T, press kick to flip and push off. Flip too early or too late and you lose speed.</li>
+      <li><b>Turns.</b> When you reach the T at the end of the black line, press kick to flip and push off. If you forget, you still turn, but slowly.</li>
       <li><b>Rhythm.</b> Clean, even strokes with a kick in between fill the rhythm bar, which makes every stroke stronger.</li>
     </ol>
   </details>
@@ -186,7 +186,7 @@ details ol { margin: 10px 0 0; padding-left: 20px; display: flex; flex-direction
 
 <script>
 (() => {
-  const POOL = 25, TREF = 0.6, LANES = 4;
+  const POOL = 25, TREF = 0.6, LANES = 4, BREATH_WIN = 0.3, FLIP_ZONE = 2.2;
   const $ = s => document.querySelector(s);
   const cv = $('#pool'), ctx = cv.getContext('2d');
   const store = (k, v) => { try { if (v === undefined) return localStorage.getItem(k); localStorage.setItem(k, v); } catch (e) { return null; } };
@@ -200,7 +200,12 @@ details ol { margin: 10px 0 0; padding-left: 20px; display: flex; flex-direction
   ];
   const CAPS = ['#f25c54', '#f7b32b', '#2ec4b6', '#e8e8e8'];
   const AI_NAMES = ['Marlin', 'Otter', 'Pike', 'Wahoo'];
-  const LEVELS = [[0.70, 0.66, 0.74], [0.62, 0.58, 0.66], [0.56, 0.53, 0.59]];
+  // per level: stroke tempos of the three AI swimmers, chance to miss a kick, timing wobble
+  const LEVELS = [
+    { T: [0.80, 0.75, 0.85], miss: 0.35, jitter: 0.1 },
+    { T: [0.62, 0.58, 0.66], miss: 0.15, jitter: 0.06 },
+    { T: [0.56, 0.53, 0.59], miss: 0.05, jitter: 0.04 }
+  ];
 
   let cfg = { mode: 1, dist: 50, level: 1 };
   let R = null; // race
@@ -233,7 +238,11 @@ details ol { margin: 10px 0 0; padding-left: 20px; display: flex; flex-direction
 
   function dive(s, now) {
     if (s.phase !== 'block') return;
-    if (R.state !== 'go') { s.phase = 'dq'; s.finish = null; say(s, 'False start!'); beep(180, 0.4, 0.15); return; }
+    if (R.state !== 'go') {
+      beep(180, 0.4, 0.15);
+      if (!s.warned) { s.warned = true; say(s, 'False start: one more and you are out'); recall(); return; }
+      s.phase = 'dq'; s.finish = null; say(s, 'False start!'); return;
+    }
     const rt = now - R.horn;
     s.reaction = rt;
     const q = clamp((0.7 - rt) / 0.55, 0, 1);
@@ -249,7 +258,7 @@ details ol { margin: 10px 0 0; padding-left: 20px; display: flex; flex-direction
       return;
     }
     const dt = s.lastStroke == null ? s.prevDt : now - s.lastStroke;
-    const consist = 1 - Math.min(1, Math.abs(dt - s.prevDt) / (s.prevDt * 0.5));
+    const consist = 1 - Math.min(1, Math.abs(dt - s.prevDt) / (s.prevDt * 0.7));
     const tempoOK = dt >= 0.3 && dt <= 1.2;
     let quality = 0.55 + 0.45 * consist;
     if (!tempoOK) quality *= 0.6;
@@ -260,50 +269,50 @@ details ol { margin: 10px 0 0; padding-left: 20px; display: flex; flex-direction
     if (s.lastStroke != null) {
       let dr = 0;
       if (consist > 0.7) dr += 0.08; else if (consist < 0.4) { dr -= 0.12; say(s, 'Uneven stroke'); }
-      if (s.kickGood) dr += 0.06; else { dr -= 0.1; if (!s.msgT) say(s, 'Missed kick'); }
+      if (s.kickGood) dr += 0.06; else { dr -= 0.05; if (!s.msgT) say(s, 'Missed kick'); }
       s.rhythm = clamp(s.rhythm + dr, 0, 1);
       s.prevDt = clamp(s.prevDt * 0.4 + dt * 0.6, 0.3, 1.2);
     }
     s.kickGood = false; s.lastArm = arm; s.lastStroke = now; s.strokes++; s.armPhase = 0;
-    if (s.pendingBreath != null && now - s.pendingBreath < 0.18) { cleanBreath(s); s.pendingBreath = null; }
+    if (s.pendingBreath != null && now - s.pendingBreath < BREATH_WIN) { cleanBreath(s); s.pendingBreath = null; }
   }
 
   function kick(s, now) {
     if (s.phase === 'block') return;
     if ((s.phase === 'swim' || s.phase === 'under') && turnAhead(s)) {
       const wd = POOL - lapPos(s);
-      if (wd <= 2.5) { flip(s, wd); return; }
+      if (wd <= FLIP_ZONE) { flip(s, wd); return; }
     }
     if (s.phase === 'under') {
-      if (now - s.lastKick > 0.22) { s.v = Math.min(2.6, s.v + 0.28); s.stamina = clamp(s.stamina - 0.4, 0, 100); s.splash = 1; }
+      if (now - s.lastKick > 0.2) { s.v = Math.min(2.4, s.v + 0.33); s.stamina = clamp(s.stamina - 0.4, 0, 100); s.splash = 1; }
       s.lastKick = now; return;
     }
     if (s.phase !== 'swim') return;
     s.splash = 1;
     if (s.lastStroke != null && !s.kickGood) {
       const frac = (now - s.lastStroke) / s.prevDt;
-      if (frac > 0.25 && frac < 0.75) { s.kickGood = true; s.v += 0.06; s.lastKick = now; return; }
+      if (frac > 0.2 && frac < 0.8) { s.kickGood = true; s.v += 0.06; s.lastKick = now; return; }
     }
     s.stamina = clamp(s.stamina - 0.5, 0, 100);
     s.lastKick = now;
   }
 
   function cleanBreath(s) {
-    if (s.air > 85) { s.v *= 0.93; s.rhythm = clamp(s.rhythm - 0.05, 0, 1); say(s, 'Wasted breath'); return; }
+    if (s.air > 90) { s.v *= 0.93; s.rhythm = clamp(s.rhythm - 0.05, 0, 1); say(s, 'Wasted breath'); return; }
     s.air = Math.min(100, s.air + 40); s.v *= 0.98;
   }
   function breathe(s, now) {
     if (s.phase === 'under') { say(s, 'Surface first'); return; }
     if (s.phase !== 'swim') return;
-    if (s.lastStroke != null && now - s.lastStroke < 0.18) cleanBreath(s);
+    if (s.lastStroke != null && now - s.lastStroke < BREATH_WIN) cleanBreath(s);
     else s.pendingBreath = now;
   }
 
   function flip(s, wd) {
-    const q = wd >= 0.7 && wd <= 1.7 ? 1 : wd > 1.7 ? 0.65 : 0.6;
+    const q = wd >= 0.6 && wd <= 1.7 ? 1 : 0.8;
     s.x = (lapOf(s) + 1) * POOL + 0.01;
     s.phase = 'under'; s.v = 1.6 + 0.9 * q; s.lastStroke = null; s.lastArm = null; s.kickGood = false;
-    say(s, q === 1 ? 'Clean turn!' : wd > 1.7 ? 'Flipped early' : 'Jammed the wall');
+    say(s, q === 1 ? 'Clean turn!' : wd > 1.7 ? 'Bit early' : 'Bit late');
   }
 
   function update(s, now, dt) {
@@ -319,15 +328,16 @@ details ol { margin: 10px 0 0; padding-left: 20px; display: flex; flex-direction
       return;
     }
     if (s.phase === 'under') {
-      s.v -= s.v * 0.9 * dt;
+      s.v -= s.v * 0.6 * dt;
+      if (s.human && s.v < 1.2 && s.phase === 'under' && !s.msgT) say(s, 'Slowing: tap kick or press an arm to swim');
       s.air = Math.max(0, s.air - 9 * dt);
       if (lapPos(s) >= 15 && lapOf(s) !== s.lapAtSurface) { s.phase = 'swim'; s.lastStroke = null; s.lastArm = null; s.lapAtSurface = lapOf(s); say(s, '15 m: surface!'); }
     } else {
       s.v -= s.v * 1.1 * dt;
-      s.air -= 5.5 * dt;
+      s.air -= 4.5 * dt;
       if (s.air <= 0) { s.air = 0; s.stamina = Math.max(0, s.stamina - 7 * dt); if (!s.msgT) say(s, 'Out of air!'); }
       s.stamina = Math.min(100, s.stamina + 2 * dt);
-      if (s.pendingBreath != null && now - s.pendingBreath >= 0.18) {
+      if (s.pendingBreath != null && now - s.pendingBreath >= BREATH_WIN) {
         s.pendingBreath = null; s.air = Math.min(100, s.air + 30); s.v *= 0.85; s.rhythm = clamp(s.rhythm - 0.15, 0, 1); say(s, 'Off-beat breath');
       }
     }
@@ -335,7 +345,7 @@ details ol { margin: 10px 0 0; padding-left: 20px; display: flex; flex-direction
     s.x += s.v * dt;
     // wall without a flip
     if (ta && Math.floor(before / POOL) !== Math.floor(s.x / POOL) && s.x < R.dist) {
-      s.x = Math.floor(s.x / POOL) * POOL + 0.01; s.v = 0.5; s.phase = 'under'; s.lastStroke = null; s.lastArm = null; say(s, 'Missed the flip');
+      s.x = Math.floor(s.x / POOL) * POOL + 0.01; s.v = 1.2; s.phase = 'under'; s.lastStroke = null; s.lastArm = null; say(s, 'Open turn (no flip)');
     }
     if (s.x >= R.dist) {
       const over = (s.x - R.dist) / Math.max(0.1, s.v);
@@ -345,8 +355,8 @@ details ol { margin: 10px 0 0; padding-left: 20px; display: flex; flex-direction
   }
 
   // ---------- computer swimmers ----------
-  function makeAI(T) {
-    return { T, jitter: 0.03 + Math.random() * 0.03, react: 0.17 + Math.random() * 0.2, next: 0, kickAt: null, n: 0, surfaceAt: 6 + Math.random() * 3, flipAt: 1.0 + Math.random() * 0.6, lastUK: 0 };
+  function makeAI(lv, k) {
+    return { T: lv.T[k], miss: lv.miss, jitter: lv.jitter * (0.7 + Math.random() * 0.6), react: 0.17 + Math.random() * 0.2, next: 0, kickAt: null, n: 0, surfaceAt: 6 + Math.random() * 3, flipAt: 1.0 + Math.random() * 0.6, lastUK: 0 };
   }
   function driveAI(s, now) {
     const a = s.ai;
@@ -359,7 +369,7 @@ details ol { margin: 10px 0 0; padding-left: 20px; display: flex; flex-direction
     }
     if (s.phase !== 'swim') return;
     if (turnAhead(s) && POOL - lapPos(s) <= a.flipAt) { kick(s, now); return; }
-    if (a.kickAt != null && now >= a.kickAt) { kick(s, now); a.kickAt = null; }
+    if (a.kickAt != null && now >= a.kickAt) { if (Math.random() >= a.miss) kick(s, now); a.kickAt = null; }
     if (now >= a.next) {
       const remaining = R.dist - s.x;
       const T = (remaining < 12 && s.stamina > 25 ? a.T * 0.85 : a.T) * (1 + randn() * a.jitter);
@@ -376,7 +386,7 @@ details ol { margin: 10px 0 0; padding-left: 20px; display: flex; flex-direction
     const humans = cfg.mode;
     for (let i = 0; i < LANES; i++) {
       if (i < humans) sw.push(makeSwimmer(i, true, humans === 1 ? 'You' : 'Player ' + (i + 1), KEYMAPS[i]));
-      else { const s = makeSwimmer(i, false, AI_NAMES[i - humans + (humans === 2 ? 1 : 0)], null); s.ai = makeAI(LEVELS[cfg.level][(i - humans) % 3]); sw.push(s); }
+      else { const s = makeSwimmer(i, false, AI_NAMES[i - humans + (humans === 2 ? 1 : 0)], null); s.ai = makeAI(LEVELS[cfg.level], (i - humans) % 3); sw.push(s); }
     }
     // human lanes in the middle
     const order = humans === 1 ? [1, 0, 2, 3] : [1, 2, 0, 3];
@@ -385,6 +395,11 @@ details ol { margin: 10px 0 0; padding-left: 20px; display: flex; flex-direction
     $('#menu').hidden = true; $('#resultsBox').hidden = true;
     callout('Take your marks');
     buildCards();
+  }
+
+  function recall() {
+    R.marksUntil = performance.now() / 1000 + 2.2 + Math.random() * 1.4;
+    callout('False start · Take your marks');
   }
 
   function callout(text, ms) {
@@ -437,7 +452,7 @@ details ol { margin: 10px 0 0; padding-left: 20px; display: flex; flex-direction
           <span>Stamina</span><div class="bar stamina"><i></i></div>
           <span>Air</span><div class="bar air"><i></i></div>
           <span>Rhythm</span><div class="bar rhythm"><i></i></div>
-          <span>Timing</span><div class="beat"><span class="zone kz"></span><span class="zone sz"></span><span class="zl" style="left:37%">KICK</span><span class="zl" style="left:84%">ARM</span><span class="cur"></span></div>
+          <span>Timing</span><div class="beat"><span class="zone kz"></span><span class="zone sz"></span><span class="zl" style="left:36%">KICK</span><span class="zl" style="left:84%">ARM</span><span class="cur"></span></div>
         </div>
         <div class="keys"><kbd data-k="left">${L.left}</kbd> left arm <kbd data-k="right">${L.right}</kbd> right arm <kbd>${L.kick}</kbd> kick / dive / flip <kbd>${L.breath}</kbd>${s.km.alt ? ' or <kbd>Space</kbd>' : ''} breathe</div>`;
       box.append(c);
