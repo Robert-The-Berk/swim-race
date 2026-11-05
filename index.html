@@ -1,0 +1,669 @@
+<title>Swim Race</title>
+<meta name="claude:viewport-fit-sides" content="cover">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Saira+Condensed:wght@600;700;800&family=Source+Sans+3:wght@400;600&family=JetBrains+Mono:wght@500;700&display=swap">
+<style>
+/* Layout: the pool fills the top like a broadcast shot; each human swimmer gets a timing card beneath it */
+:root {
+  --bg: #eef3f6;
+  --panel: #ffffff;
+  --line: #cfdbe3;
+  --fg: #0f2433;
+  --muted: #5b7282;
+  --accent: #0a74b8;
+  --good: #1f9d6b;
+  --warn: #d98a0b;
+  --bad: #d64545;
+  --board: #0f2433;
+  --board-fg: #f4d35e;
+  --f-display: 'Saira Condensed', 'Arial Narrow', sans-serif;
+  --f-body: 'Source Sans 3', system-ui, -apple-system, 'Segoe UI', sans-serif;
+  --f-mono: 'JetBrains Mono', ui-monospace, Menlo, monospace;
+}
+@media (prefers-color-scheme: dark) {
+  :root:not([data-theme="light"]) {
+    --bg: #0b1620; --panel: #12212d; --line: #223646; --fg: #e3edf3; --muted: #8ea4b3;
+    --accent: #4fb3f0; --good: #3cc58c; --warn: #f0a63a; --bad: #f06a6a; --board: #050c12; --board-fg: #f4d35e;
+    color-scheme: dark;
+  }
+}
+:root[data-theme="dark"] {
+  --bg: #0b1620; --panel: #12212d; --line: #223646; --fg: #e3edf3; --muted: #8ea4b3;
+  --accent: #4fb3f0; --good: #3cc58c; --warn: #f0a63a; --bad: #f06a6a; --board: #050c12; --board-fg: #f4d35e;
+  color-scheme: dark;
+}
+html, body { background: var(--bg); color: var(--fg); }
+[hidden] { display: none !important; }
+body {
+  font-family: var(--f-body); font-size: 15px; line-height: 1.45;
+  padding-left: max(16px, env(safe-area-inset-left, 0px));
+  padding-right: max(16px, env(safe-area-inset-right, 0px));
+  padding-block: 16px 36px;
+}
+.wrap { max-width: 1180px; margin: 0 auto; display: flex; flex-direction: column; gap: 14px; }
+header { display: flex; flex-wrap: wrap; align-items: baseline; justify-content: space-between; gap: 8px 16px; }
+h1 { font-family: var(--f-display); font-weight: 800; font-size: clamp(32px, 5vw, 46px); line-height: .95; margin: 0; letter-spacing: .01em; text-transform: uppercase; }
+h1 span { color: var(--accent); }
+.sub { color: var(--muted); margin: 0; max-width: 62ch; }
+
+.stage { position: relative; }
+canvas#pool { display: block; width: 100%; border-radius: 8px; background: #0c6aa3; touch-action: none; }
+.board {
+  position: absolute; top: 10px; right: 10px; background: var(--board); color: var(--board-fg);
+  font-family: var(--f-mono); font-weight: 700; font-size: clamp(16px, 2.4vw, 24px);
+  padding: 4px 10px; border-radius: 4px; font-variant-numeric: tabular-nums; letter-spacing: .04em;
+}
+.callout {
+  position: absolute; left: 50%; top: 50%; transform: translate(-50%, -50%);
+  font-family: var(--f-display); font-weight: 800; font-size: clamp(28px, 6vw, 60px); color: #fff;
+  text-transform: uppercase; letter-spacing: .03em; text-shadow: 0 2px 12px rgba(0,0,0,.45); pointer-events: none; white-space: nowrap;
+}
+
+.overlay { position: absolute; inset: 0; display: flex; align-items: center; justify-content: center; padding: 12px; }
+.panel {
+  background: var(--panel); color: var(--fg); border: 1px solid var(--line); border-radius: 10px;
+  padding: 18px 20px; width: min(460px, 100%); max-height: 100%; overflow: auto;
+  display: flex; flex-direction: column; gap: 12px; box-shadow: 0 16px 40px rgba(0,0,0,.25);
+}
+.panel h2 { font-family: var(--f-display); font-weight: 800; font-size: 28px; margin: 0; text-transform: uppercase; line-height: 1; }
+.panel p { margin: 0; color: var(--muted); }
+.choice { display: flex; flex-direction: column; gap: 6px; }
+.choice .lbl { font-size: 12px; font-weight: 600; letter-spacing: .1em; text-transform: uppercase; color: var(--muted); }
+.seg { display: flex; flex-wrap: wrap; gap: 6px; }
+.seg button, .btn {
+  font: 600 15px var(--f-body); padding: 8px 12px; border-radius: 6px; border: 1px solid var(--line);
+  background: var(--bg); color: var(--fg); cursor: pointer;
+}
+.seg button[aria-pressed="true"] { background: var(--accent); border-color: var(--accent); color: #fff; }
+.btn.primary { background: var(--accent); border-color: var(--accent); color: #fff; font-family: var(--f-display); font-size: 20px; letter-spacing: .04em; text-transform: uppercase; padding: 8px 16px; }
+button:focus-visible { outline: 3px solid var(--warn); outline-offset: 2px; }
+.results { width: 100%; border-collapse: collapse; font-variant-numeric: tabular-nums; }
+.results th, .results td { text-align: left; padding: 6px 4px; border-bottom: 1px solid var(--line); }
+.results th { font-size: 12px; letter-spacing: .08em; text-transform: uppercase; color: var(--muted); font-weight: 600; }
+.results td.t { font-family: var(--f-mono); }
+.results .me td { font-weight: 600; }
+.note { font-size: 14px; color: var(--accent); }
+
+.cards { display: grid; grid-template-columns: repeat(auto-fit, minmax(280px, 1fr)); gap: 12px; }
+.card { background: var(--panel); border: 1px solid var(--line); border-radius: 8px; padding: 12px 14px; display: flex; flex-direction: column; gap: 10px; min-width: 0; }
+.card-head { display: flex; align-items: center; gap: 10px; }
+.cap { width: 14px; height: 14px; border-radius: 50%; flex: none; }
+.card-name { font-family: var(--f-display); font-weight: 700; font-size: 22px; text-transform: uppercase; line-height: 1; }
+.card-msg { margin-left: auto; font-weight: 600; font-size: 14px; color: var(--warn); min-height: 1.2em; text-align: right; }
+.meters { display: grid; grid-template-columns: 70px minmax(0, 1fr); gap: 6px 10px; align-items: center; font-size: 13px; color: var(--muted); }
+.bar { height: 10px; background: var(--bg); border: 1px solid var(--line); border-radius: 5px; overflow: hidden; }
+.bar i { display: block; height: 100%; width: 50%; border-radius: 5px; }
+.bar.stamina i { background: var(--good); }
+.bar.air i { background: var(--accent); }
+.bar.rhythm i { background: var(--warn); }
+.beat { position: relative; height: 26px; background: var(--bg); border: 1px solid var(--line); border-radius: 5px; overflow: hidden; }
+.beat .zone { position: absolute; top: 0; bottom: 0; }
+.beat .kz { left: 22%; width: 43%; background: color-mix(in srgb, var(--good) 18%, transparent); }
+.beat .sz { left: 80%; width: 20%; background: color-mix(in srgb, var(--accent) 25%, transparent); }
+.beat .zl { position: absolute; top: 50%; transform: translateY(-50%); font-size: 11px; font-weight: 600; letter-spacing: .08em; color: var(--muted); }
+.beat .cur { position: absolute; top: 2px; bottom: 2px; width: 3px; border-radius: 2px; background: var(--fg); left: 0; }
+.keys { display: flex; flex-wrap: wrap; gap: 6px; font-size: 13px; color: var(--muted); align-items: center; }
+kbd { font-family: var(--f-mono); font-size: 12px; border: 1px solid var(--line); border-bottom-width: 2px; border-radius: 4px; padding: 1px 6px; background: var(--bg); color: var(--fg); }
+kbd.next { border-color: var(--accent); color: var(--accent); }
+
+.touch { display: none; grid-template-columns: repeat(4, 1fr); gap: 8px; }
+.touch button { font: 700 16px var(--f-display); text-transform: uppercase; padding: 16px 4px; border-radius: 8px; border: 1px solid var(--line); background: var(--panel); color: var(--fg); touch-action: manipulation; user-select: none; -webkit-user-select: none; }
+.touch button:active { background: var(--accent); color: #fff; }
+@media (pointer: coarse) { .touch { display: grid; } }
+
+details { background: var(--panel); border: 1px solid var(--line); border-radius: 8px; padding: 12px 14px; }
+details summary { cursor: pointer; font-family: var(--f-display); font-weight: 700; font-size: 18px; text-transform: uppercase; }
+details ol { margin: 10px 0 0; padding-left: 20px; display: flex; flex-direction: column; gap: 6px; max-width: 75ch; }
+</style>
+
+<div class="wrap">
+  <header>
+    <h1>Swim <span>Race</span></h1>
+    <p class="sub">Dive on the horn, then keep arms, kick and breath in rhythm. Mashing burns you out. Smooth swimmers win.</p>
+  </header>
+
+  <div class="stage" id="stage">
+    <canvas id="pool" aria-label="Top-down view of a 25 metre, 4 lane pool"></canvas>
+    <div class="board" id="clock">0:00.00</div>
+    <div class="callout" id="callout" hidden></div>
+    <div class="overlay" id="menu">
+      <div class="panel">
+        <h2>Race setup</h2>
+        <div class="choice">
+          <span class="lbl">Swimmers</span>
+          <div class="seg" id="mode">
+            <button data-v="1" aria-pressed="true">1 player vs 3</button>
+            <button data-v="2" aria-pressed="false">2 players, one keyboard</button>
+          </div>
+        </div>
+        <div class="choice">
+          <span class="lbl">Distance (25 m pool)</span>
+          <div class="seg" id="dist">
+            <button data-v="50" aria-pressed="true">50 m · 1 turn</button>
+            <button data-v="100" aria-pressed="false">100 m · 3 turns</button>
+          </div>
+        </div>
+        <div class="choice">
+          <span class="lbl">Field</span>
+          <div class="seg" id="level">
+            <button data-v="0" aria-pressed="false">Club</button>
+            <button data-v="1" aria-pressed="true">Regional</button>
+            <button data-v="2" aria-pressed="false">National</button>
+          </div>
+        </div>
+        <button class="btn primary" id="start">Step up to the block</button>
+        <p>Press <kbd>Enter</kbd> to start. Read “How to swim” below the pool first if this is your first race.</p>
+      </div>
+    </div>
+    <div class="overlay" id="resultsBox" hidden>
+      <div class="panel" id="resultsPanel"></div>
+    </div>
+  </div>
+
+  <div class="touch" id="touch" aria-label="Touch controls for player 1">
+    <button data-a="left">Left arm</button>
+    <button data-a="kick">Kick</button>
+    <button data-a="breath">Breathe</button>
+    <button data-a="right">Right arm</button>
+  </div>
+
+  <div class="cards" id="cards"></div>
+
+  <details>
+    <summary>How to swim</summary>
+    <ol>
+      <li><b>Start.</b> On “Take your marks”, press and hold your kick key. Let go the moment the horn sounds. Letting go before the horn is a false start and you are out.</li>
+      <li><b>Underwater.</b> After the dive, tap kick for dolphin kicks. Press an arm key to break out and start swimming. You must be up by the 15 m mark.</li>
+      <li><b>Arms.</b> Alternate left and right at a steady pace. The same arm twice stalls you. A faster tempo is faster, but it drains stamina quickly.</li>
+      <li><b>Kick.</b> Tap kick once between strokes, while the timing cursor is in the green zone. Missing kicks breaks your rhythm.</li>
+      <li><b>Breathe.</b> Press breathe together with an arm stroke. A breath between strokes costs speed. Breathing when your lungs are still full wastes time.</li>
+      <li><b>Turns.</b> Near the wall, where the black line ends in a T, press kick to flip and push off. Flip too early or too late and you lose speed.</li>
+      <li><b>Rhythm.</b> Clean, even strokes with a kick in between fill the rhythm bar, which makes every stroke stronger.</li>
+    </ol>
+  </details>
+</div>
+
+<script>
+(() => {
+  const POOL = 25, TREF = 0.6, LANES = 4;
+  const $ = s => document.querySelector(s);
+  const cv = $('#pool'), ctx = cv.getContext('2d');
+  const store = (k, v) => { try { if (v === undefined) return localStorage.getItem(k); localStorage.setItem(k, v); } catch (e) { return null; } };
+  const clamp = (v, a, b) => Math.max(a, Math.min(b, v));
+  const randn = () => { let u = 0, v = 0; while (!u) u = Math.random(); while (!v) v = Math.random(); return Math.sqrt(-2 * Math.log(u)) * Math.cos(2 * Math.PI * v); };
+  const fmt = t => { if (t == null || !isFinite(t)) return '–'; const m = Math.floor(t / 60), s = t - m * 60; return m + ':' + (s < 10 ? '0' : '') + s.toFixed(2); };
+
+  const KEYMAPS = [
+    { left: 'KeyA', right: 'KeyD', kick: 'KeyS', breath: 'KeyW', alt: 'Space', labels: { left: 'A', right: 'D', kick: 'S', breath: 'W' } },
+    { left: 'KeyJ', right: 'KeyL', kick: 'KeyK', breath: 'KeyI', labels: { left: 'J', right: 'L', kick: 'K', breath: 'I' } }
+  ];
+  const CAPS = ['#f25c54', '#f7b32b', '#2ec4b6', '#e8e8e8'];
+  const AI_NAMES = ['Marlin', 'Otter', 'Pike', 'Wahoo'];
+  const LEVELS = [[0.70, 0.66, 0.74], [0.62, 0.58, 0.66], [0.56, 0.53, 0.59]];
+
+  let cfg = { mode: 1, dist: 50, level: 1 };
+  let R = null; // race
+  let audio = null;
+
+  // ---------- sound ----------
+  function beep(freq, dur, vol, type = 'square') {
+    try {
+      audio = audio || new (window.AudioContext || window.webkitAudioContext)();
+      const t = audio.currentTime, o = audio.createOscillator(), g = audio.createGain();
+      o.type = type; o.frequency.value = freq;
+      g.gain.setValueAtTime(vol, t); g.gain.exponentialRampToValueAtTime(0.0001, t + dur);
+      o.connect(g).connect(audio.destination); o.start(t); o.stop(t + dur + 0.02);
+    } catch (e) { /* no audio */ }
+  }
+
+  // ---------- swimmer model ----------
+  function makeSwimmer(i, human, name, km) {
+    return {
+      i, human, name, km, color: CAPS[i], phase: 'block', x: 0, v: 0, stamina: 100, air: 100, rhythm: 0.25,
+      lastStroke: null, lastArm: null, prevDt: TREF, kickGood: false, lastKick: -9, pendingBreath: null,
+      holding: false, reaction: null, finish: null, msg: '', msgT: 0, strokes: 0, airT: 0, diveFrom: 0, diveTo: 0,
+      armPhase: 0, splash: 0, ai: null, lapAtSurface: -1
+    };
+  }
+  const lapOf = s => Math.min(Math.floor(s.x / POOL), R.dist / POOL - 1);
+  const lapPos = s => s.x - lapOf(s) * POOL;
+  const turnAhead = s => (lapOf(s) + 1) * POOL < R.dist;
+  const say = (s, m) => { s.msg = m; s.msgT = 1.3; };
+
+  function dive(s, now) {
+    if (s.phase !== 'block') return;
+    if (R.state !== 'go') { s.phase = 'dq'; s.finish = null; say(s, 'False start!'); beep(180, 0.4, 0.15); return; }
+    const rt = now - R.horn;
+    s.reaction = rt;
+    const q = clamp((0.7 - rt) / 0.55, 0, 1);
+    s.phase = 'air'; s.airT = 0; s.diveFrom = 0; s.diveTo = 4.2 + 1.6 * q; s.v = 2.3 + 0.5 * q;
+    say(s, rt < 0.25 ? 'Great start!' : rt < 0.45 ? 'Good start' : 'Slow off the block');
+  }
+
+  function stroke(s, arm, now) {
+    if (s.phase === 'under') { s.phase = 'swim'; s.lastStroke = null; s.lastArm = null; say(s, 'Breakout'); }
+    if (s.phase !== 'swim') return;
+    if (s.lastArm === arm) {
+      s.rhythm = clamp(s.rhythm - 0.2, 0, 1); s.v += 0.12; s.lastStroke = now; say(s, 'Same arm!');
+      return;
+    }
+    const dt = s.lastStroke == null ? s.prevDt : now - s.lastStroke;
+    const consist = 1 - Math.min(1, Math.abs(dt - s.prevDt) / (s.prevDt * 0.5));
+    const tempoOK = dt >= 0.3 && dt <= 1.2;
+    let quality = 0.55 + 0.45 * consist;
+    if (!tempoOK) quality *= 0.6;
+    const sp = 0.45 + 0.55 * (s.stamina / 100);
+    const airPen = s.air <= 0 ? 0.6 : 1;
+    s.v += 0.85 * quality * sp * airPen * (1 + 0.35 * s.rhythm);
+    s.stamina = clamp(s.stamina - Math.pow(TREF / clamp(dt, 0.25, 1.5), 3), 0, 100);
+    if (s.lastStroke != null) {
+      let dr = 0;
+      if (consist > 0.7) dr += 0.08; else if (consist < 0.4) { dr -= 0.12; say(s, 'Uneven stroke'); }
+      if (s.kickGood) dr += 0.06; else { dr -= 0.1; if (!s.msgT) say(s, 'Missed kick'); }
+      s.rhythm = clamp(s.rhythm + dr, 0, 1);
+      s.prevDt = clamp(s.prevDt * 0.4 + dt * 0.6, 0.3, 1.2);
+    }
+    s.kickGood = false; s.lastArm = arm; s.lastStroke = now; s.strokes++; s.armPhase = 0;
+    if (s.pendingBreath != null && now - s.pendingBreath < 0.18) { cleanBreath(s); s.pendingBreath = null; }
+  }
+
+  function kick(s, now) {
+    if (s.phase === 'block') return;
+    if ((s.phase === 'swim' || s.phase === 'under') && turnAhead(s)) {
+      const wd = POOL - lapPos(s);
+      if (wd <= 2.5) { flip(s, wd); return; }
+    }
+    if (s.phase === 'under') {
+      if (now - s.lastKick > 0.22) { s.v = Math.min(2.6, s.v + 0.28); s.stamina = clamp(s.stamina - 0.4, 0, 100); s.splash = 1; }
+      s.lastKick = now; return;
+    }
+    if (s.phase !== 'swim') return;
+    s.splash = 1;
+    if (s.lastStroke != null && !s.kickGood) {
+      const frac = (now - s.lastStroke) / s.prevDt;
+      if (frac > 0.25 && frac < 0.75) { s.kickGood = true; s.v += 0.06; s.lastKick = now; return; }
+    }
+    s.stamina = clamp(s.stamina - 0.5, 0, 100);
+    s.lastKick = now;
+  }
+
+  function cleanBreath(s) {
+    if (s.air > 85) { s.v *= 0.93; s.rhythm = clamp(s.rhythm - 0.05, 0, 1); say(s, 'Wasted breath'); return; }
+    s.air = Math.min(100, s.air + 40); s.v *= 0.98;
+  }
+  function breathe(s, now) {
+    if (s.phase === 'under') { say(s, 'Surface first'); return; }
+    if (s.phase !== 'swim') return;
+    if (s.lastStroke != null && now - s.lastStroke < 0.18) cleanBreath(s);
+    else s.pendingBreath = now;
+  }
+
+  function flip(s, wd) {
+    const q = wd >= 0.7 && wd <= 1.7 ? 1 : wd > 1.7 ? 0.65 : 0.6;
+    s.x = (lapOf(s) + 1) * POOL + 0.01;
+    s.phase = 'under'; s.v = 1.6 + 0.9 * q; s.lastStroke = null; s.lastArm = null; s.kickGood = false;
+    say(s, q === 1 ? 'Clean turn!' : wd > 1.7 ? 'Flipped early' : 'Jammed the wall');
+  }
+
+  function update(s, now, dt) {
+    if (s.msgT > 0) s.msgT = Math.max(0, s.msgT - dt);
+    s.splash = Math.max(0, s.splash - dt * 3);
+    s.armPhase += dt;
+    if (s.phase === 'block' || s.phase === 'done' || s.phase === 'dq') return;
+    if (s.phase === 'air') {
+      s.airT += dt;
+      const k = Math.min(1, s.airT / 0.55);
+      s.x = s.diveFrom + (s.diveTo - s.diveFrom) * k;
+      if (k >= 1) s.phase = 'under';
+      return;
+    }
+    if (s.phase === 'under') {
+      s.v -= s.v * 0.9 * dt;
+      s.air = Math.max(0, s.air - 9 * dt);
+      if (lapPos(s) >= 15 && lapOf(s) !== s.lapAtSurface) { s.phase = 'swim'; s.lastStroke = null; s.lastArm = null; s.lapAtSurface = lapOf(s); say(s, '15 m: surface!'); }
+    } else {
+      s.v -= s.v * 1.1 * dt;
+      s.air -= 5.5 * dt;
+      if (s.air <= 0) { s.air = 0; s.stamina = Math.max(0, s.stamina - 7 * dt); if (!s.msgT) say(s, 'Out of air!'); }
+      s.stamina = Math.min(100, s.stamina + 2 * dt);
+      if (s.pendingBreath != null && now - s.pendingBreath >= 0.18) {
+        s.pendingBreath = null; s.air = Math.min(100, s.air + 30); s.v *= 0.85; s.rhythm = clamp(s.rhythm - 0.15, 0, 1); say(s, 'Off-beat breath');
+      }
+    }
+    const before = s.x, ta = turnAhead(s);
+    s.x += s.v * dt;
+    // wall without a flip
+    if (ta && Math.floor(before / POOL) !== Math.floor(s.x / POOL) && s.x < R.dist) {
+      s.x = Math.floor(s.x / POOL) * POOL + 0.01; s.v = 0.5; s.phase = 'under'; s.lastStroke = null; s.lastArm = null; say(s, 'Missed the flip');
+    }
+    if (s.x >= R.dist) {
+      const over = (s.x - R.dist) / Math.max(0.1, s.v);
+      s.x = R.dist; s.finish = (now - R.horn) - over; s.phase = 'done';
+      if (s.human) beep(880, 0.25, 0.08, 'sine');
+    }
+  }
+
+  // ---------- computer swimmers ----------
+  function makeAI(T) {
+    return { T, jitter: 0.03 + Math.random() * 0.03, react: 0.17 + Math.random() * 0.2, next: 0, kickAt: null, n: 0, surfaceAt: 6 + Math.random() * 3, flipAt: 1.0 + Math.random() * 0.6, lastUK: 0 };
+  }
+  function driveAI(s, now) {
+    const a = s.ai;
+    if (s.phase === 'block') { if (R.state === 'go' && now - R.horn >= a.react) dive(s, now); return; }
+    if (s.phase === 'under') {
+      if (turnAhead(s) && POOL - lapPos(s) <= a.flipAt) { kick(s, now); return; }
+      if (lapPos(s) >= a.surfaceAt || s.v < 1.3) { stroke(s, 'left', now); a.next = now + a.T; a.kickAt = now + a.T / 2; a.n = 1; return; }
+      if (now - a.lastUK > 0.35) { kick(s, now); a.lastUK = now; }
+      return;
+    }
+    if (s.phase !== 'swim') return;
+    if (turnAhead(s) && POOL - lapPos(s) <= a.flipAt) { kick(s, now); return; }
+    if (a.kickAt != null && now >= a.kickAt) { kick(s, now); a.kickAt = null; }
+    if (now >= a.next) {
+      const remaining = R.dist - s.x;
+      const T = (remaining < 12 && s.stamina > 25 ? a.T * 0.85 : a.T) * (1 + randn() * a.jitter);
+      a.n++;
+      stroke(s, a.n % 2 ? 'left' : 'right', now);
+      if (a.n % 3 === 0 && s.air < 80 || s.air < 30) breathe(s, now);
+      a.next = now + T; a.kickAt = now + T * 0.5;
+    }
+  }
+
+  // ---------- race flow ----------
+  function newRace() {
+    const sw = [];
+    const humans = cfg.mode;
+    for (let i = 0; i < LANES; i++) {
+      if (i < humans) sw.push(makeSwimmer(i, true, humans === 1 ? 'You' : 'Player ' + (i + 1), KEYMAPS[i]));
+      else { const s = makeSwimmer(i, false, AI_NAMES[i - humans + (humans === 2 ? 1 : 0)], null); s.ai = makeAI(LEVELS[cfg.level][(i - humans) % 3]); sw.push(s); }
+    }
+    // human lanes in the middle
+    const order = humans === 1 ? [1, 0, 2, 3] : [1, 2, 0, 3];
+    sw.forEach((s, k) => s.lane = order[k]);
+    R = { dist: cfg.dist, state: 'marks', horn: null, sw, t0: performance.now() / 1000, marksUntil: performance.now() / 1000 + 1.8 + Math.random() * 1.4 };
+    $('#menu').hidden = true; $('#resultsBox').hidden = true;
+    callout('Take your marks');
+    buildCards();
+  }
+
+  function callout(text, ms) {
+    const c = $('#callout'); c.textContent = text; c.hidden = !text;
+    if (ms) setTimeout(() => { if (c.textContent === text) c.hidden = true; }, ms);
+  }
+
+  function finishRace() {
+    R.state = 'done';
+    const rows = R.sw.slice().sort((a, b) => (a.finish ?? 1e9) - (b.finish ?? 1e9));
+    const key = 'swimrace.best.' + R.dist;
+    let best = parseFloat(store(key)); const bestBefore = isNaN(best) ? null : best;
+    const humanTimes = R.sw.filter(s => s.human && s.finish != null).map(s => s.finish);
+    const newBest = humanTimes.length && (bestBefore == null || Math.min(...humanTimes) < bestBefore) ? Math.min(...humanTimes) : null;
+    if (newBest != null) store(key, String(newBest));
+    const p = $('#resultsPanel'); p.innerHTML = '';
+    const h = document.createElement('h2'); h.textContent = R.dist + ' m freestyle results';
+    const t = document.createElement('table'); t.className = 'results';
+    t.innerHTML = '<thead><tr><th>Place</th><th>Swimmer</th><th>Time</th><th>Reaction</th></tr></thead>';
+    const tb = document.createElement('tbody');
+    rows.forEach((s, k) => {
+      const tr = document.createElement('tr'); if (s.human) tr.className = 'me';
+      const cells = [s.finish == null ? (s.phase === 'dq' ? 'DQ' : '–') : String(k + 1), s.name, s.phase === 'dq' ? 'False start' : fmt(s.finish), s.reaction == null ? '–' : s.reaction.toFixed(2) + ' s'];
+      cells.forEach((c, j) => { const td = document.createElement('td'); td.textContent = c; if (j === 2 || j === 3) td.className = 't'; tr.append(td); });
+      tb.append(tr);
+    });
+    t.append(tb);
+    p.append(h, t);
+    const note = document.createElement('p'); note.className = 'note';
+    note.textContent = newBest != null ? `New personal best for ${R.dist} m: ${fmt(newBest)}` : bestBefore != null ? `Personal best for ${R.dist} m: ${fmt(bestBefore)}` : '';
+    if (note.textContent) p.append(note);
+    const row = document.createElement('div'); row.className = 'seg';
+    const again = document.createElement('button'); again.className = 'btn primary'; again.textContent = 'Race again'; again.addEventListener('click', newRace);
+    const setup = document.createElement('button'); setup.className = 'btn'; setup.textContent = 'Change setup'; setup.addEventListener('click', () => { $('#resultsBox').hidden = true; $('#menu').hidden = false; });
+    row.append(again, setup); p.append(row);
+    $('#resultsBox').hidden = false;
+    again.focus();
+  }
+
+  // ---------- cards (human HUD) ----------
+  let cardEls = [];
+  function buildCards() {
+    const box = $('#cards'); box.innerHTML = ''; cardEls = [];
+    R.sw.filter(s => s.human).forEach(s => {
+      const c = document.createElement('div'); c.className = 'card';
+      const L = s.km.labels;
+      c.innerHTML = `
+        <div class="card-head"><span class="cap" style="background:${s.color}"></span><span class="card-name">${s.name}</span><span class="card-msg"></span></div>
+        <div class="meters">
+          <span>Stamina</span><div class="bar stamina"><i></i></div>
+          <span>Air</span><div class="bar air"><i></i></div>
+          <span>Rhythm</span><div class="bar rhythm"><i></i></div>
+          <span>Timing</span><div class="beat"><span class="zone kz"></span><span class="zone sz"></span><span class="zl" style="left:37%">KICK</span><span class="zl" style="left:84%">ARM</span><span class="cur"></span></div>
+        </div>
+        <div class="keys"><kbd data-k="left">${L.left}</kbd> left arm <kbd data-k="right">${L.right}</kbd> right arm <kbd>${L.kick}</kbd> kick / dive / flip <kbd>${L.breath}</kbd>${s.km.alt ? ' or <kbd>Space</kbd>' : ''} breathe</div>`;
+      box.append(c);
+      cardEls.push({ s, msg: c.querySelector('.card-msg'), st: c.querySelector('.stamina i'), air: c.querySelector('.air i'), rh: c.querySelector('.rhythm i'), cur: c.querySelector('.cur'), kl: c.querySelector('[data-k="left"]'), kr: c.querySelector('[data-k="right"]') });
+    });
+  }
+  function updateCards(now) {
+    cardEls.forEach(e => {
+      const s = e.s;
+      e.msg.textContent = s.msgT > 0 ? s.msg : (s.phase === 'block' && R.state !== 'done' ? (s.holding ? 'Set…' : 'Hold kick to set') : '');
+      e.st.style.width = s.stamina + '%';
+      e.air.style.width = s.air + '%';
+      e.air.style.background = s.air < 25 ? 'var(--bad)' : '';
+      e.rh.style.width = (s.rhythm * 100) + '%';
+      const frac = s.phase === 'swim' && s.lastStroke != null ? clamp((now - s.lastStroke) / s.prevDt / 1.15, 0, 1) : 0;
+      e.cur.style.left = `calc(${frac * 100}% - 2px)`;
+      const next = s.lastArm === 'left' ? 'right' : 'left';
+      e.kl.classList.toggle('next', s.phase === 'swim' && next === 'left');
+      e.kr.classList.toggle('next', s.phase === 'swim' && next === 'right');
+    });
+  }
+
+  // ---------- drawing ----------
+  let W = 800, H = 400, deck = 26, px0, px1, py0, py1, laneH, scale;
+  function resize() {
+    W = cv.clientWidth || 800; H = Math.round(Math.max(260, Math.min(W * 0.48, 520)));
+    cv.style.height = H + 'px';
+    const dpr = window.devicePixelRatio || 1;
+    cv.width = Math.round(W * dpr); cv.height = Math.round(H * dpr); ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+    deck = Math.max(18, W * 0.03);
+    px0 = deck; px1 = W - deck; py0 = deck; py1 = H - deck; laneH = (py1 - py0) / LANES; scale = (px1 - px0) / POOL;
+  }
+  const mx = m => px0 + m * scale;
+  function drawPool() {
+    // deck tiles
+    ctx.fillStyle = '#dfe7ea'; ctx.fillRect(0, 0, W, H);
+    ctx.strokeStyle = 'rgba(15,36,51,.08)'; ctx.lineWidth = 1;
+    for (let x = 0; x < W; x += 14) { ctx.beginPath(); ctx.moveTo(x + .5, 0); ctx.lineTo(x + .5, H); ctx.stroke(); }
+    for (let y = 0; y < H; y += 14) { ctx.beginPath(); ctx.moveTo(0, y + .5); ctx.lineTo(W, y + .5); ctx.stroke(); }
+    // water
+    const g = ctx.createLinearGradient(0, py0, 0, py1);
+    g.addColorStop(0, '#1b8fd0'); g.addColorStop(1, '#0d6fae');
+    ctx.fillStyle = g; ctx.fillRect(px0, py0, px1 - px0, py1 - py0);
+    // caustics
+    const t = performance.now() / 1000;
+    ctx.strokeStyle = 'rgba(255,255,255,.07)'; ctx.lineWidth = 2;
+    for (let k = 0; k < 14; k++) {
+      ctx.beginPath();
+      for (let x = px0; x <= px1; x += 16) {
+        const y = py0 + ((k + 0.5) / 14) * (py1 - py0) + Math.sin(x * 0.03 + t * 1.2 + k) * 4;
+        x === px0 ? ctx.moveTo(x, y) : ctx.lineTo(x, y);
+      }
+      ctx.stroke();
+    }
+    // lane black lines with T ends (2 m from each wall)
+    ctx.fillStyle = 'rgba(8,24,40,.55)';
+    for (let l = 0; l < LANES; l++) {
+      const cy = py0 + laneH * (l + 0.5), w = Math.max(3, laneH * 0.08);
+      ctx.fillRect(mx(2), cy - w / 2, mx(23) - mx(2), w);
+      ctx.fillRect(mx(2) - w / 2, cy - laneH * 0.18, w, laneH * 0.36);
+      ctx.fillRect(mx(23) - w / 2, cy - laneH * 0.18, w, laneH * 0.36);
+    }
+    // lane ropes: red near walls (5 m), blue/white in the middle, a marker band at 15 m
+    for (let l = 1; l < LANES; l++) {
+      const y = py0 + laneH * l;
+      const step = Math.max(6, scale * 0.35);
+      for (let x = px0; x < px1; x += step) {
+        const m = (x - px0) / scale;
+        ctx.fillStyle = (m < 5 || m > 20) ? '#e63946' : (Math.abs(m - 15) < 0.5 || Math.abs(m - 10) < 0.5) ? '#f4d35e' : (Math.floor(x / step) % 2 ? '#f1faee' : '#1d4ed8');
+        ctx.beginPath(); ctx.arc(x + step / 2, y, Math.max(2.5, step * 0.32), 0, Math.PI * 2); ctx.fill();
+      }
+    }
+    // backstroke flags at 5 m
+    [5, 20].forEach(m => {
+      ctx.strokeStyle = 'rgba(255,255,255,.5)'; ctx.lineWidth = 1; ctx.setLineDash([3, 3]);
+      ctx.beginPath(); ctx.moveTo(mx(m), py0 - 6); ctx.lineTo(mx(m), py1 + 6); ctx.stroke(); ctx.setLineDash([]);
+      for (let y = py0; y < py1; y += 12) {
+        ctx.fillStyle = ['#e63946', '#f1faee', '#1d4ed8'][Math.floor(y / 12) % 3];
+        ctx.beginPath(); ctx.moveTo(mx(m) - 4, y); ctx.lineTo(mx(m) + 4, y); ctx.lineTo(mx(m), y + 8); ctx.closePath(); ctx.fill();
+      }
+    });
+    // walls / touchpads and blocks
+    ctx.fillStyle = '#0f2433';
+    ctx.fillRect(px0 - 4, py0, 4, py1 - py0); ctx.fillRect(px1, py0, 4, py1 - py0);
+    for (let l = 0; l < LANES; l++) {
+      const cy = py0 + laneH * (l + 0.5);
+      ctx.fillStyle = '#9aa9b2'; ctx.fillRect(2, cy - laneH * 0.22, px0 - 6, laneH * 0.44);
+      ctx.fillStyle = '#0f2433'; ctx.font = `700 ${Math.max(10, laneH * 0.22)}px 'Saira Condensed', sans-serif`;
+      ctx.textAlign = 'center'; ctx.textBaseline = 'middle'; ctx.fillText(String(l + 1), (px0 - 4) / 2, cy);
+    }
+    // metre marks
+    ctx.fillStyle = 'rgba(15,36,51,.6)'; ctx.font = `600 ${Math.max(9, deck * 0.42)}px 'JetBrains Mono', monospace`; ctx.textAlign = 'center'; ctx.textBaseline = 'middle';
+    [5, 10, 15, 20].forEach(m => ctx.fillText(m + 'm', mx(m), py1 + deck / 2));
+  }
+
+  function drawSwimmer(s, now) {
+    const cy = py0 + laneH * (s.lane + 0.5);
+    const lap = R ? Math.min(Math.floor(s.x / POOL), R.dist / POOL - 1) : 0;
+    let pos = s.x - lap * POOL; const dir = lap % 2 ? -1 : 1;
+    if (s.phase === 'done' && R.dist / POOL % 2 === 0) { /* finished on start wall */ }
+    const m = dir > 0 ? pos : POOL - pos;
+    let x = mx(clamp(m, 0, POOL));
+    if (s.phase === 'block') x = px0 - 10;
+    const L = laneH * 0.55; // body length
+    const under = s.phase === 'under', air = s.phase === 'air';
+    ctx.save();
+    ctx.translate(x, cy);
+    ctx.scale(dir, 1);
+    if (s.phase === 'dq') ctx.globalAlpha = 0.35;
+    if (under) ctx.globalAlpha = 0.5;
+    const lift = air ? Math.sin(Math.min(1, s.airT / 0.55) * Math.PI) * 0.25 + 1 : 1;
+    ctx.scale(lift, lift);
+    // wake
+    if (s.phase === 'swim' && s.v > 0.3) {
+      ctx.fillStyle = 'rgba(255,255,255,.25)';
+      ctx.beginPath(); ctx.ellipse(-L * 0.9, 0, L * 0.5 * Math.min(1, s.v / 2), L * 0.16, 0, 0, Math.PI * 2); ctx.fill();
+    }
+    if (s.splash > 0 && !under) {
+      ctx.fillStyle = `rgba(255,255,255,${0.6 * s.splash})`;
+      for (let k = 0; k < 4; k++) { ctx.beginPath(); ctx.arc(-L * 0.75 - k * 3, (k % 2 ? -1 : 1) * L * 0.08, 2.5 + s.splash * 2, 0, Math.PI * 2); ctx.fill(); }
+    }
+    // body
+    ctx.fillStyle = '#c98a62';
+    ctx.beginPath(); ctx.ellipse(-L * 0.25, 0, L * 0.42, L * 0.13, 0, 0, Math.PI * 2); ctx.fill();
+    // legs
+    const kickWave = Math.sin(now * 14) * (s.phase === 'swim' || under ? 1 : 0);
+    ctx.strokeStyle = '#c98a62'; ctx.lineWidth = L * 0.07; ctx.lineCap = 'round';
+    ctx.beginPath(); ctx.moveTo(-L * 0.62, -L * 0.04); ctx.lineTo(-L * 0.95, -L * 0.06 + kickWave * L * 0.03); ctx.stroke();
+    ctx.beginPath(); ctx.moveTo(-L * 0.62, L * 0.04); ctx.lineTo(-L * 0.95, L * 0.06 - kickWave * L * 0.03); ctx.stroke();
+    // arms: the arm that just stroked sweeps back, the other reaches forward
+    const p = clamp(s.armPhase / Math.max(0.3, s.prevDt), 0, 1);
+    const reach = (side, phase) => {
+      const ang = phase * Math.PI; // 0 = forward, PI = back
+      const ax = Math.cos(ang) * L * 0.45, ay = side * (L * 0.12 + Math.sin(ang) * L * 0.18);
+      ctx.beginPath(); ctx.moveTo(0, side * L * 0.1); ctx.lineTo(ax, ay); ctx.stroke();
+    };
+    if (s.phase === 'swim') {
+      const lead = s.lastArm === 'left' ? -1 : 1;
+      reach(lead, p); reach(-lead, Math.max(0, p - 1) );
+    } else if (s.phase === 'block' && s.holding) {
+      reach(-1, 0.5); reach(1, 0.5);
+    } else { reach(-1, 0); reach(1, 0); }
+    // head + cap
+    ctx.fillStyle = s.color; ctx.beginPath(); ctx.arc(L * 0.14, 0, L * 0.12, 0, Math.PI * 2); ctx.fill();
+    ctx.restore();
+    // name + message
+    ctx.fillStyle = '#fff'; ctx.textBaseline = 'bottom'; ctx.textAlign = 'center';
+    ctx.font = `700 ${Math.max(10, laneH * 0.2)}px 'Saira Condensed', sans-serif`;
+    const tx = clamp(x, px0 + 40, px1 - 40);
+    ctx.fillText(s.msgT > 0 && s.human ? s.msg : s.name, tx, cy - laneH * 0.22);
+  }
+
+  function frame() {
+    const now = performance.now() / 1000;
+    const dt = Math.min(0.05, now - (frame.last || now)); frame.last = now;
+    if (R) {
+      if (R.state === 'marks' && now >= R.marksUntil) { R.state = 'go'; R.horn = now; beep(660, 0.45, 0.12); callout('Go!', 700); }
+      R.sw.forEach(s => { if (s.ai) driveAI(s, now); update(s, now, dt); });
+      if (R.state === 'go' && R.sw.every(s => s.phase === 'done' || s.phase === 'dq')) finishRace();
+      const lead = R.state === 'go' ? now - R.horn : 0;
+      if (R.state === 'go') $('#clock').textContent = fmt(lead);
+    }
+    drawPool();
+    if (R) R.sw.forEach(s => drawSwimmer(s, now));
+    if (R) updateCards(now);
+    requestAnimationFrame(frame);
+  }
+
+  // ---------- input ----------
+  function humanFor(code) {
+    if (!R) return null;
+    for (const s of R.sw) {
+      if (!s.human) continue;
+      const k = s.km;
+      if (code === k.left) return [s, 'left'];
+      if (code === k.right) return [s, 'right'];
+      if (code === k.kick) return [s, 'kick'];
+      if (code === k.breath || (k.alt && code === k.alt)) return [s, 'breath'];
+    }
+    return null;
+  }
+  function press(s, action, now) {
+    if (s.phase === 'block') { if (action === 'kick') s.holding = true; return; }
+    if (action === 'left' || action === 'right') stroke(s, action, now);
+    else if (action === 'kick') kick(s, now);
+    else if (action === 'breath') breathe(s, now);
+  }
+  function release(s, action, now) {
+    if (s.phase === 'block' && action === 'kick' && s.holding) { s.holding = false; dive(s, now); }
+  }
+  document.addEventListener('keydown', e => {
+    if (e.code === 'Enter' && (!$('#menu').hidden || (R && R.state === 'done'))) { e.preventDefault(); newRace(); return; }
+    const hit = humanFor(e.code);
+    if (!hit || !R || R.state === 'done') return;
+    e.preventDefault();
+    if (e.repeat) return;
+    press(hit[0], hit[1], performance.now() / 1000);
+  });
+  document.addEventListener('keyup', e => {
+    const hit = humanFor(e.code);
+    if (!hit || !R) return;
+    release(hit[0], hit[1], performance.now() / 1000);
+  });
+  document.querySelectorAll('#touch button').forEach(b => {
+    const a = b.dataset.a;
+    b.addEventListener('pointerdown', e => { e.preventDefault(); if (R && R.state !== 'done') press(R.sw[0], a, performance.now() / 1000); });
+    b.addEventListener('pointerup', e => { e.preventDefault(); if (R) release(R.sw[0], a, performance.now() / 1000); });
+    b.addEventListener('pointercancel', () => { if (R) release(R.sw[0], a, performance.now() / 1000); });
+  });
+
+  // ---------- menu ----------
+  function seg(id, key) {
+    document.querySelectorAll(`#${id} button`).forEach(b => b.addEventListener('click', () => {
+      document.querySelectorAll(`#${id} button`).forEach(x => x.setAttribute('aria-pressed', String(x === b)));
+      cfg[key] = Number(b.dataset.v);
+    }));
+  }
+  seg('mode', 'mode'); seg('dist', 'dist'); seg('level', 'level');
+  $('#start').addEventListener('click', newRace);
+
+  // idle preview: show the field on the blocks behind the menu
+  R = { dist: 50, state: 'idle', sw: [], horn: null };
+  for (let i = 0; i < LANES; i++) { const s = makeSwimmer(i, false, i === 0 ? 'You' : AI_NAMES[i - 1], null); s.lane = [1, 0, 2, 3][i]; R.sw.push(s); }
+
+  if (window.ResizeObserver) new ResizeObserver(resize).observe($('#stage')); else window.addEventListener('resize', resize);
+  resize();
+  requestAnimationFrame(frame);
+})();
+</script>
